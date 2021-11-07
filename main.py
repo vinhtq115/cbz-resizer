@@ -3,7 +3,8 @@ import cv2
 import numpy as np
 import os.path
 import zipfile
-from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
+from pathlib import Path
 
 
 def resize(img, max_width, max_height):
@@ -23,30 +24,34 @@ def resize(img, max_width, max_height):
     return new_img
 
 
+def thread(arg):
+    cbz_file, max_width, max_height, output_dir = arg
+    cbz_filename = os.path.split(cbz_file)[1]
+    cbz_save_path = Path(os.path.join(output_dir, cbz_filename)).with_suffix('.cbz')
+
+    with zipfile.ZipFile(cbz_save_path, 'w') as cbz_save:
+        with zipfile.ZipFile(cbz_file, 'r') as cbz:
+            file_list = cbz.namelist()
+            for image in file_list:
+                # Read image and resize
+                data = cbz.read(image)
+                img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+                img = resize(img, max_width, max_height)
+
+                # Save image
+                ext = image.split('.')[-1]
+                retval, buf = cv2.imencode(f'.{ext}', img)
+                cbz_save.writestr(image, buf)
+
+
 def main(args):
     max_width = args.max_width
     max_height = args.max_height
     output_dir = args.output_dir
 
     cbz_files = args.file
-    for cbz_file in cbz_files:
-        print(f'Resizing {cbz_file}')
-        cbz_filename = os.path.split(cbz_file)[1]
-        cbz_save_path = os.path.join(output_dir, cbz_filename)
-
-        with zipfile.ZipFile(cbz_save_path, 'w') as cbz_save:
-            with zipfile.ZipFile(cbz_file, 'r') as cbz:
-                file_list = cbz.namelist()
-                for image in tqdm(file_list, unit='image'):
-                    # Read image and resize
-                    data = cbz.read(image)
-                    img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
-                    img = resize(img, max_width, max_height)
-
-                    # Save image
-                    ext = image.split('.')[-1]
-                    retval, buf = cv2.imencode(f'.{ext}', img)
-                    cbz_save.writestr(image, buf)
+    arg = [(cbz_file, max_width, max_height, output_dir) for cbz_file in cbz_files]
+    process_map(thread, arg, max_workers=12)
 
 
 if __name__ == '__main__':
