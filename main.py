@@ -19,7 +19,7 @@ def resize(img, max_width, max_height):
     side2 = max_width / img.shape[1]
     scale_factor = min(side1, side2)
     new_resolution = (int(img.shape[1] * scale_factor), int(img.shape[0] * scale_factor))
-    new_img = cv2.resize(img, new_resolution)
+    new_img = cv2.resize(img, new_resolution, interpolation=cv2.INTER_AREA)
     return new_img
 
 
